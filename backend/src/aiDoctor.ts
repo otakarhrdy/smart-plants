@@ -14,18 +14,10 @@ export interface PlantDiagnosis {
   treatmentAdvice: string;
 }
 
-/**
- * Analyzuje obrázek rostliny pomocí Gemini Vision API
- */
 export async function analyzePlantImage(
   imageBase64: string,
   mimeType: string = "image/jpeg",
 ): Promise<PlantDiagnosis> {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY není nastavena v souboru .env");
-  }
-
-  // Odstranění hlavičky data URL, pokud existuje (např. data:image/jpeg;base64,)
   const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
 
   const response = await ai.models.generateContent({
