@@ -13,75 +13,72 @@ const prisma = new PrismaClient();
 const PORT = process.env.PORT || 5000;
 
 app.use(cors());
-app.use(express.json({ limit: "10mb" })); // Limit pro nahrávání fotek v Base64
+app.use(express.json({ limit: "10mb" }));
 
-// --- Zod schémata ---
+// Schéma pro přidání rostliny
 const PlantSchema = z.object({
-  name: z.string().min(1, "Název rostliny je povinný"),
-  species: z.string().optional(),
-  location: z.string().optional(),
-  imageUrl: z.string().optional(),
-  waterInterval: z.number().int().min(1, "Interval musí být alespoň 1 den"),
-  minMoisture: z.number().optional().default(20),
-  sensorId: z.string().optional(),
-  notes: z.string().optional(),
+  name: z.string().min(1, "Název je povinný"),
+  species: z.string().optional().nullable(),
+  location: z.string().optional().nullable(),
+  waterInterval: z.number().int().min(1),
 });
 
-const TelemetrySchema = z.object({
-  sensorId: z.string(),
-  moisture: z.number(),
-  temperature: z.number().optional(),
-  humidity: z.number().optional(),
-  lightLux: z.number().optional(),
+// Testovací root endpoint
+app.get("/", (_req: Request, res: Response) => {
+  res.send("Smart Plant API běží!");
 });
 
-// --- API Endpointy ---
-
-// 1. Získat všechny rostliny včetně posledního měření ze senzoru
+// 1. GET: Získat všechny rostliny
 app.get("/api/plants", async (_req: Request, res: Response) => {
   try {
     const plants = await prisma.plant.findMany({
       include: {
-        readings: {
-          orderBy: { createdAt: "desc" },
-          take: 1, // Pouze nejnovější záznam ze senzoru
-        },
         aiReports: {
           orderBy: { createdAt: "desc" },
           take: 1,
         },
       },
-      orderBy: { lastWatered: "asc" }, // Nejdříve ty, které nejdéle nebyly zalité
+      orderBy: { lastWatered: "asc" },
     });
     return res.json(plants);
   } catch (error) {
-    console.error("Chyba při načítání rostlin:", error);
+    console.error("Chyba při čtení:", error);
     return res.status(500).json({ error: "Chyba při načítání rostlin" });
   }
 });
 
-// 2. Vytvořit novou rostlinu
+// 2. POST: Přidat novou rostlinu
 app.post("/api/plants", async (req: Request, res: Response) => {
+  console.log("Příchozí požadavek na vytvoření kytky:", req.body);
   const result = PlantSchema.safeParse(req.body);
+
   if (!result.success) {
     return res.status(400).json({ errors: result.error.issues });
   }
 
+  const { name, species, location, waterInterval } = result.data;
+
   try {
     const plant = await prisma.plant.create({
-      data: result.data,
+      data: {
+        name,
+        species: species || null,
+        location: location || null,
+        waterInterval,
+        lastWatered: new Date(),
+      },
     });
+    console.log("Kytka úspěšně uložena do DB:", plant.name);
     return res.status(201).json(plant);
-  } catch (error) {
-    return res.status(500).json({ error: "Chyba při ukládání rostliny" });
+  } catch (error: any) {
+    console.error("Chyba DB:", error);
+    return res.status(500).json({ error: error.message || "Chyba DB" });
   }
 });
 
-// 3. Tlačítko "Zalito dnes"
+// 3. POST: Zalito dnes
 app.post("/api/plants/:id/water", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
-  if (isNaN(id)) return res.status(400).json({ error: "Neplatné ID" });
-
   try {
     const updated = await prisma.plant.update({
       where: { id },
@@ -89,60 +86,31 @@ app.post("/api/plants/:id/water", async (req: Request, res: Response) => {
     });
     return res.json(updated);
   } catch (error) {
-    return res.status(500).json({ error: "Chyba při aktualizaci zalití" });
+    return res.status(500).json({ error: "Chyba při zalití" });
   }
 });
 
-// 4. Telemetrický endpoint pro ESP32 senzor
-app.post("/api/telemetry", async (req: Request, res: Response) => {
-  const result = TelemetrySchema.safeParse(req.body);
-  if (!result.success) {
-    return res.status(400).json({ errors: result.error.issues });
-  }
-
-  const { sensorId, moisture, temperature, humidity, lightLux } = result.data;
-
+// 4. DELETE: Smazat rostlinu
+app.delete("/api/plants/:id", async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
   try {
-    const plant = await prisma.plant.findUnique({ where: { sensorId } });
-    if (!plant) {
-      return res
-        .status(404)
-        .json({ error: `Rostlina s čidlem ${sensorId} nebyla nalezena` });
-    }
-
-    const reading = await prisma.sensorReading.create({
-      data: {
-        plantId: plant.id,
-        moisture,
-        temperature,
-        humidity,
-        lightLux,
-      },
-    });
-
-    return res.status(201).json({ message: "Telemetrie uložena", reading });
+    await prisma.plant.delete({ where: { id } });
+    return res.json({ message: "Smazáno" });
   } catch (error) {
-    return res.status(500).json({ error: "Chyba při ukládání telemetrie" });
+    return res.status(500).json({ error: "Chyba při mazání" });
   }
 });
 
-// 5. Diagnostika rostliny přes Gemini Vision AI
+// 5. POST: AI Diagnostika
 app.post("/api/plants/:id/diagnose", async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const { imageBase64, mimeType } = req.body;
-
-  if (isNaN(id) || !imageBase64) {
-    return res
-      .status(400)
-      .json({ error: "Chybí ID rostliny nebo obrazová data" });
-  }
 
   try {
     const diagnosis = await analyzePlantImage(
       imageBase64,
       mimeType || "image/jpeg",
     );
-
     const report = await prisma.aiReport.create({
       data: {
         plantId: id,
@@ -151,13 +119,9 @@ app.post("/api/plants/:id/diagnose", async (req: Request, res: Response) => {
         treatmentAdvice: diagnosis.treatmentAdvice,
       },
     });
-
     return res.json({ diagnosis, report });
   } catch (error: any) {
-    console.error("Chyba AI analýzy:", error);
-    return res
-      .status(500)
-      .json({ error: error.message || "AI diagnostika selhala" });
+    return res.status(500).json({ error: error.message || "AI selhala" });
   }
 });
 

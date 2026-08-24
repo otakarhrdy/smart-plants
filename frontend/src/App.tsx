@@ -7,19 +7,10 @@ import {
   CheckCircle2,
   Clock,
   Plus,
-  Activity,
-  Thermometer,
-  SunMedium,
   Camera,
+  Trash2,
 } from "lucide-react";
-
-interface SensorReading {
-  id: number;
-  moisture: number;
-  temperature?: number;
-  lightLux?: number;
-  createdAt: string;
-}
+import "./index.css";
 
 interface AiReport {
   id: number;
@@ -36,9 +27,6 @@ interface Plant {
   location?: string;
   waterInterval: number;
   lastWatered: string;
-  minMoisture?: number;
-  sensorId?: string;
-  readings: SensorReading[];
   aiReports: AiReport[];
 }
 
@@ -52,18 +40,21 @@ export default function App() {
   const [species, setSpecies] = useState("");
   const [location, setLocation] = useState("");
   const [waterInterval, setWaterInterval] = useState(7);
-  const [sensorId, setSensorId] = useState("");
 
   const API_URL = "http://localhost:5000/api";
 
-  // Načtení rostlin z backendu
+  // 1. Načtení všech rostlin
   const fetchPlants = async () => {
     try {
       const res = await fetch(`${API_URL}/plants`);
-      const data = await res.json();
-      setPlants(data);
+      if (res.ok) {
+        const data = await res.json();
+        setPlants(data);
+      } else {
+        console.error("Chyba při stahování dat ze serveru");
+      }
     } catch (err) {
-      console.error("Chyba při stahování rostlin:", err);
+      console.error("Chyba spojení s backendem:", err);
     }
   };
 
@@ -71,60 +62,82 @@ export default function App() {
     fetchPlants();
   }, []);
 
-  // Tlačítko "Zalito dnes"
+  // 2. Přidání nové rostliny (bezpečné ošetření chyb a JSONu)
+  const handleAddPlant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      alert("Zadejte prosím název rostliny.");
+      return;
+    }
+
+    try {
+      const payload = {
+        name: name.trim(),
+        species: species.trim() || undefined,
+        location: location.trim() || undefined,
+        waterInterval: Number(waterInterval) || 7,
+      };
+
+      const res = await fetch(`${API_URL}/plants`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("Chyba serveru:", errorText);
+        alert(
+          `Server vrátil chybu (${res.status}): Zkontrolujte, zda běží backend.`,
+        );
+        return;
+      }
+
+      await res.json();
+
+      // Reset formuláře po úspěchu
+      setName("");
+      setSpecies("");
+      setLocation("");
+      setWaterInterval(7);
+      setShowAddForm(false);
+      fetchPlants();
+    } catch (err: any) {
+      console.error("Chyba spojení:", err);
+      alert(`Nepodařilo se spojit se serverem: ${err.message}`);
+    }
+  };
+
+  // 3. Tlačítko "Zalito dnes"
   const handleWaterPlant = async (id: number) => {
     try {
       const res = await fetch(`${API_URL}/plants/${id}/water`, {
         method: "POST",
       });
-      if (res.ok) {
-        fetchPlants();
-      }
+      if (res.ok) fetchPlants();
     } catch (err) {
       console.error("Chyba při zalévání:", err);
     }
   };
 
-  // Vytvoření nové rostliny
-  const handleAddPlant = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-
+  // 4. Smazání rostliny
+  const handleDeletePlant = async (id: number) => {
+    if (!confirm("Opravdu chcete tuto rostlinu odebrat z evidence?")) return;
     try {
-      const res = await fetch(`${API_URL}/plants`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          species: species || undefined,
-          location: location || undefined,
-          waterInterval: Number(waterInterval),
-          sensorId: sensorId || undefined,
-        }),
-      });
-
-      if (res.ok) {
-        setName("");
-        setSpecies("");
-        setLocation("");
-        setWaterInterval(7);
-        setSensorId("");
-        setShowAddForm(false);
-        fetchPlants();
-      }
+      const res = await fetch(`${API_URL}/plants/${id}`, { method: "DELETE" });
+      if (res.ok) fetchPlants();
     } catch (err) {
-      console.error("Chyba při přidávání:", err);
+      console.error("Chyba při mazání:", err);
     }
   };
 
-  // AI Lékař: Nahrání fotky a diagnostika
+  // 5. AI Lékař rostlin (Gemini Vision)
   const handleDiagnose = async (plantId: number, file: File) => {
     setLoadingAi(plantId);
     const reader = new FileReader();
 
     reader.onloadend = async () => {
       const base64String = reader.result as string;
-
       try {
         const res = await fetch(`${API_URL}/plants/${plantId}/diagnose`, {
           method: "POST",
@@ -138,10 +151,12 @@ export default function App() {
         if (res.ok) {
           fetchPlants();
         } else {
-          alert("AI diagnostika selhala. Ověřte nastavení GEMINI_API_KEY.");
+          alert(
+            "AI diagnostika selhala. Ověřte GEMINI_API_KEY v souboru backend/.env.",
+          );
         }
       } catch (err) {
-        console.error("Chyba při odesílání na AI:", err);
+        console.error("Chyba při AI analýze:", err);
       } finally {
         setLoadingAi(null);
       }
@@ -185,38 +200,29 @@ export default function App() {
     <div className="container">
       <header className="header">
         <h1>
-          <Sprout size={36} /> Smart Plant Care
+          <Sprout size={36} color="#16a34a" /> Smart Plant Care
         </h1>
-        <p>Inteligentní správa domácích rostlin, IoT čidla & AI lékař</p>
+        <p>Inteligentní správa domácích pokojovek & AI diagnostika</p>
       </header>
 
-      {/* Tlačítko pro rozbalení formuláře */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          marginBottom: "1rem",
-        }}
-      >
+      {/* Tlačítko pro přidání */}
+      <div className="top-actions">
         <button
           onClick={() => setShowAddForm(!showAddForm)}
-          style={{
-            padding: "0.6rem 1rem",
-            background: "#1e293b",
-            color: "#f1f5f9",
-            border: "1px solid #334155",
-          }}
+          className="btn-toggle"
         >
           <Plus size={16} />{" "}
           {showAddForm ? "Zavřít formulář" : "Přidat novou rostlinu"}
         </button>
       </div>
 
-      {/* Formulář pro přidání kytky */}
+      {/* Formulář */}
       {showAddForm && (
         <form onSubmit={handleAddPlant} className="form-card">
-          <h2 style={{ fontSize: "1.2rem", color: "#4ade80" }}>
-            Přidat novou pokojovku
+          <h2
+            style={{ fontSize: "1.25rem", color: "#15803d", fontWeight: 700 }}
+          >
+            Přidat pokojovou rostlinu
           </h2>
           <div className="form-grid">
             <input
@@ -234,7 +240,7 @@ export default function App() {
             />
             <input
               type="text"
-              placeholder="Umístění (např. Parapet jih)"
+              placeholder="Umístění (např. Parapet na jih)"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
             />
@@ -246,133 +252,92 @@ export default function App() {
               onChange={(e) => setWaterInterval(Number(e.target.value))}
               required
             />
-            <input
-              type="text"
-              placeholder="ID senzoru (ESP32) – nepovinné"
-              value={sensorId}
-              onChange={(e) => setSensorId(e.target.value)}
-            />
             <button type="submit" className="btn-primary">
-              <Plus size={18} /> Uložit rostlinu
+              <Plus size={18} /> Uložit do profilu
             </button>
           </div>
         </form>
       )}
 
-      {/* Karty rostlin */}
+      {/* Mřížka s kartami rostlin */}
       <div className="plants-grid">
         {plants.length === 0 ? (
           <div
             style={{
               textAlign: "center",
               gridColumn: "1 / -1",
-              color: "#64748b",
-              padding: "3rem",
+              color: "#94a3b8",
+              padding: "3.5rem",
             }}
           >
-            Zatím nemáte přidané žádné rostliny. Přidejte svou první pokojovku!
+            Zatím nemáte v evidenci žádné rostliny. Klikněte na tlačítko výše a
+            přidejte svou první kytku!
           </div>
         ) : (
           plants.map((plant) => {
             const status = getWateringStatus(plant);
-            const latestReading = plant.readings[0];
-            const latestAiReport = plant.aiReports[0];
+            const latestAiReport = plant.aiReports?.[0];
 
             return (
               <div key={plant.id} className={`plant-card ${status.type}`}>
                 <div className="plant-card-body">
                   <div className="plant-title-row">
                     <div>
-                      <h2 style={{ fontSize: "1.25rem", fontWeight: 600 }}>
-                        {plant.name}
-                      </h2>
-                      <div style={{ fontSize: "0.8rem", color: "#94a3b8" }}>
+                      <h2>{plant.name}</h2>
+                      <div className="plant-subtitle">
                         {plant.species || "Pokojová rostlina"}{" "}
                         {plant.location && `• ${plant.location}`}
                       </div>
                     </div>
-                    <span className={`status-badge ${status.badgeClass}`}>
-                      {status.icon} {status.text}
-                    </span>
-                  </div>
-
-                  {/* Živá telemetrie z čidla */}
-                  {latestReading ? (
-                    <div className="sensor-box">
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.4rem",
-                          color: "#38bdf8",
-                        }}
-                      >
-                        <Droplets size={16} /> {latestReading.moisture}% vlhkost
-                      </div>
-                      {latestReading.temperature && (
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.3rem",
-                            color: "#f59e0b",
-                          }}
-                        >
-                          <Thermometer size={14} /> {latestReading.temperature}
-                          °C
-                        </div>
-                      )}
-                      {latestReading.lightLux && (
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.3rem",
-                            color: "#eab308",
-                          }}
-                        >
-                          <SunMedium size={14} /> {latestReading.lightLux} lx
-                        </div>
-                      )}
-                    </div>
-                  ) : (
                     <div
                       style={{
-                        fontSize: "0.75rem",
-                        color: "#64748b",
                         display: "flex",
                         alignItems: "center",
-                        gap: "0.3rem",
+                        gap: "0.5rem",
                       }}
                     >
-                      <Activity size={13} /> Fyzické čidlo není spárováno
+                      <span className={`status-badge ${status.badgeClass}`}>
+                        {status.icon} {status.text}
+                      </span>
+                      <button
+                        onClick={() => handleDeletePlant(plant.id)}
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          color: "#94a3b8",
+                          padding: "0.2rem",
+                        }}
+                        title="Smazat rostlinu"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
-                  )}
+                  </div>
 
-                  {/* Výsledek z AI diagnostiky */}
+                  {/* AI Lékař box */}
                   {latestAiReport && (
                     <div className="ai-box">
                       <div
                         style={{
-                          fontWeight: 600,
+                          fontWeight: 700,
                           display: "flex",
                           alignItems: "center",
-                          gap: "0.3rem",
-                          marginBottom: "0.25rem",
+                          gap: "0.35rem",
+                          marginBottom: "0.35rem",
                         }}
                       >
-                        <Sparkles size={14} /> AI Stav:{" "}
+                        <Sparkles size={15} color="#16a34a" /> Stav:{" "}
                         {latestAiReport.healthStatus}
                       </div>
                       {latestAiReport.diagnosedIssue && (
-                        <div style={{ marginBottom: "0.2rem" }}>
+                        <div style={{ marginBottom: "0.25rem" }}>
                           <strong>Závada:</strong>{" "}
                           {latestAiReport.diagnosedIssue}
                         </div>
                       )}
                       {latestAiReport.treatmentAdvice && (
                         <div>
-                          <strong>Léčba:</strong>{" "}
+                          <strong>Doporučení:</strong>{" "}
                           {latestAiReport.treatmentAdvice}
                         </div>
                       )}
