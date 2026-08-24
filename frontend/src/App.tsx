@@ -41,7 +41,7 @@ export default function App() {
   const [location, setLocation] = useState("");
   const [waterInterval, setWaterInterval] = useState(7);
 
-  const API_URL = "http://localhost:5000/api";
+  const API_URL = "http://localhost:5001/api";
 
   // 1. Načtení všech rostlin
   const fetchPlants = async () => {
@@ -62,7 +62,7 @@ export default function App() {
     fetchPlants();
   }, []);
 
-  // 2. Přidání nové rostliny (bezpečné ošetření chyb a JSONu)
+  // 2. Přidání nové rostliny
   const handleAddPlant = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -88,14 +88,14 @@ export default function App() {
         const errorText = await res.text();
         console.error("Chyba serveru:", errorText);
         alert(
-          `Server vrátil chybu (${res.status}): Zkontrolujte, zda běží backend.`,
+          `Server vrátil chybu (${res.status}): Zkontrolujte běh backendu.`,
         );
         return;
       }
 
       await res.json();
 
-      // Reset formuláře po úspěchu
+      // Reset formuláře po úspěšném uložení
       setName("");
       setSpecies("");
       setLocation("");
@@ -165,7 +165,7 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
-  // Výpočet stavu zalévání (Semafor)
+  // Výpočet stavu zalévání (Barevný semafor)
   const getWateringStatus = (plant: Plant) => {
     const last = new Date(plant.lastWatered).getTime();
     const now = new Date().getTime();
@@ -202,10 +202,10 @@ export default function App() {
         <h1>
           <Sprout size={36} color="#16a34a" /> Smart Plant Care
         </h1>
-        <p>Inteligentní správa domácích pokojovek & AI diagnostika</p>
+        <p>Péče o pokojové rostliny, sledování zálivky & AI diagnostika</p>
       </header>
 
-      {/* Tlačítko pro přidání */}
+      {/* Horní lišta pro přidání */}
       <div className="top-actions">
         <button
           onClick={() => setShowAddForm(!showAddForm)}
@@ -314,7 +314,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* AI Lékař box */}
+                  {/* AI Lékař posudek */}
                   {latestAiReport && (
                     <div className="ai-box">
                       <div
@@ -344,7 +344,7 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Akce */}
+                  {/* Akční tlačítka */}
                   <div className="card-actions">
                     <button
                       onClick={() => handleWaterPlant(plant.id)}
