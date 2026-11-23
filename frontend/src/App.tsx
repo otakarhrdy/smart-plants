@@ -2,23 +2,13 @@ import React, { useState, useEffect } from "react";
 import {
   Sprout,
   Droplets,
-  Sparkles,
   AlertTriangle,
   CheckCircle2,
   Clock,
   Plus,
-  Camera,
   Trash2,
 } from "lucide-react";
 import "./index.css";
-
-interface AiReport {
-  id: number;
-  healthStatus: string;
-  diagnosedIssue?: string;
-  treatmentAdvice?: string;
-  createdAt: string;
-}
 
 interface Plant {
   id: number;
@@ -27,12 +17,10 @@ interface Plant {
   location?: string;
   waterInterval: number;
   lastWatered: string;
-  aiReports: AiReport[];
 }
 
 export default function App() {
   const [plants, setPlants] = useState<Plant[]>([]);
-  const [loadingAi, setLoadingAi] = useState<number | null>(null);
 
   // Formulář pro novou rostlinu
   const [showAddForm, setShowAddForm] = useState(false);
@@ -131,40 +119,6 @@ export default function App() {
     }
   };
 
-  // 5. AI Lékař rostlin (Gemini Vision)
-  const handleDiagnose = async (plantId: number, file: File) => {
-    setLoadingAi(plantId);
-    const reader = new FileReader();
-
-    reader.onloadend = async () => {
-      const base64String = reader.result as string;
-      try {
-        const res = await fetch(`${API_URL}/plants/${plantId}/diagnose`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            imageBase64: base64String,
-            mimeType: file.type || "image/jpeg",
-          }),
-        });
-
-        if (res.ok) {
-          fetchPlants();
-        } else {
-          alert(
-            "AI diagnostika selhala. Ověřte GEMINI_API_KEY v souboru backend/.env.",
-          );
-        }
-      } catch (err) {
-        console.error("Chyba při AI analýze:", err);
-      } finally {
-        setLoadingAi(null);
-      }
-    };
-
-    reader.readAsDataURL(file);
-  };
-
   // Výpočet stavu zalévání (Barevný semafor)
   const getWateringStatus = (plant: Plant) => {
     const last = new Date(plant.lastWatered).getTime();
@@ -202,7 +156,7 @@ export default function App() {
         <h1>
           <Sprout size={36} color="#16a34a" /> Smart Plant Care
         </h1>
-        <p>Péče o pokojové rostliny, sledování zálivky & AI diagnostika</p>
+        <p>Péče o pokojové rostliny a sledování zálivky</p>
       </header>
 
       {/* Horní lišta pro přidání */}
@@ -276,7 +230,6 @@ export default function App() {
         ) : (
           plants.map((plant) => {
             const status = getWateringStatus(plant);
-            const latestAiReport = plant.aiReports?.[0];
 
             return (
               <div key={plant.id} className={`plant-card ${status.type}`}>
@@ -314,36 +267,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* AI Lékař posudek */}
-                  {latestAiReport && (
-                    <div className="ai-box">
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.35rem",
-                          marginBottom: "0.35rem",
-                        }}
-                      >
-                        <Sparkles size={15} color="#16a34a" /> Stav:{" "}
-                        {latestAiReport.healthStatus}
-                      </div>
-                      {latestAiReport.diagnosedIssue && (
-                        <div style={{ marginBottom: "0.25rem" }}>
-                          <strong>Závada:</strong>{" "}
-                          {latestAiReport.diagnosedIssue}
-                        </div>
-                      )}
-                      {latestAiReport.treatmentAdvice && (
-                        <div>
-                          <strong>Doporučení:</strong>{" "}
-                          {latestAiReport.treatmentAdvice}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
                   {/* Akční tlačítka */}
                   <div className="card-actions">
                     <button
@@ -352,25 +275,6 @@ export default function App() {
                     >
                       <Droplets size={16} /> Zalito dnes
                     </button>
-
-                    <label className="btn-ai" style={{ cursor: "pointer" }}>
-                      {loadingAi === plant.id ? (
-                        <Sparkles size={16} className="animate-spin" />
-                      ) : (
-                        <Camera size={16} />
-                      )}
-                      <span>AI Posudek</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        style={{ display: "none" }}
-                        onChange={(e) => {
-                          if (e.target.files?.[0]) {
-                            handleDiagnose(plant.id, e.target.files[0]);
-                          }
-                        }}
-                      />
-                    </label>
                   </div>
                 </div>
               </div>

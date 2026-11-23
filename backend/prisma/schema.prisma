@@ -26,7 +26,6 @@ model Plant {
   createdAt     DateTime        @default(now())
 
   readings      SensorReading[]
-  aiReports     AiReport[]
 }
 
 model SensorReading {
@@ -39,15 +38,4 @@ model SensorReading {
 
   plantId     Int
   plant       Plant    @relation(fields: [plantId], references: [id], onDelete: Cascade)
-}
-
-model AiReport {
-  id              Int      @id @default(autoincrement())
-  healthStatus    String   // "Zdravá" | "Potřebuje péči" | "Kritický stav"
-  diagnosedIssue  String?  // Nalezený problém
-  treatmentAdvice String?  // Doporučený postup nápravy
-  createdAt       DateTime @default(now())
-
-  plantId         Int
-  plant           Plant    @relation(fields: [plantId], references: [id], onDelete: Cascade)
 }

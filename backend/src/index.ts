@@ -4,7 +4,6 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
-import { analyzePlantImage } from "./aiDoctor.js";
 
 dotenv.config();
 
@@ -32,12 +31,6 @@ app.get("/", (_req: Request, res: Response) => {
 app.get("/api/plants", async (_req: Request, res: Response) => {
   try {
     const plants = await prisma.plant.findMany({
-      include: {
-        aiReports: {
-          orderBy: { createdAt: "desc" },
-          take: 1,
-        },
-      },
       orderBy: { lastWatered: "asc" },
     });
     return res.json(plants);
@@ -98,30 +91,6 @@ app.delete("/api/plants/:id", async (req: Request, res: Response) => {
     return res.json({ message: "Smazáno" });
   } catch (error) {
     return res.status(500).json({ error: "Chyba při mazání" });
-  }
-});
-
-// 5. POST: AI Diagnostika
-app.post("/api/plants/:id/diagnose", async (req: Request, res: Response) => {
-  const id = Number(req.params.id);
-  const { imageBase64, mimeType } = req.body;
-
-  try {
-    const diagnosis = await analyzePlantImage(
-      imageBase64,
-      mimeType || "image/jpeg",
-    );
-    const report = await prisma.aiReport.create({
-      data: {
-        plantId: id,
-        healthStatus: diagnosis.healthStatus,
-        diagnosedIssue: diagnosis.diagnosedIssue,
-        treatmentAdvice: diagnosis.treatmentAdvice,
-      },
-    });
-    return res.json({ diagnosis, report });
-  } catch (error: any) {
-    return res.status(500).json({ error: error.message || "AI selhala" });
   }
 });
 
